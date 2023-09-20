@@ -128,6 +128,115 @@ TEST_CASE("match on std::variant", "[utils]") {
     CHECK(ret_l == 1.0);
 }
 
+TEST_CASE("match on std::optional", "[utils]") {
+    // cvref-qualified variant alternatives are forwarded
+
+    std::optional<float> opt_value(1.0f);
+    std::optional<float> opt_null;
+
+    decltype(auto) ret_a = match(
+        opt_value,                        //
+        [](std::nullopt_t) { return 0; }, //
+        [](float &) { return 1; });
+    static_assert(std::is_same_v<decltype(ret_a), int>);
+    CHECK(ret_a == 1);
+
+    decltype(auto) ret_b = match(
+        std::as_const(opt_value),         //
+        [](std::nullopt_t) { return 0; }, //
+        [](const float &) { return 1; });
+    static_assert(std::is_same_v<decltype(ret_b), int>);
+    CHECK(ret_b == 1);
+
+    decltype(auto) ret_c = match(
+        std::move(opt_value),             //
+        [](std::nullopt_t) { return 0; }, //
+        [](float &&) { return 1; });
+    static_assert(std::is_same_v<decltype(ret_c), int>);
+    CHECK(ret_c == 1);
+
+    // cvref-qualified results are forwarded
+
+    int int_0 = 0;
+    int int_1 = 1;
+
+    decltype(auto) ret_d = match(
+        opt_value,                                       //
+        [&](std::nullopt_t) -> auto & { return int_0; }, //
+        [&](float) -> auto & { return int_1; });
+    static_assert(std::is_same_v<decltype(ret_d), int &>);
+    CHECK(&ret_d == &int_1);
+
+    decltype(auto) ret_e = match(
+        std::as_const(opt_value),                              //
+        [&](std::nullopt_t) -> const auto & { return int_0; }, //
+        [&](float) -> const auto & { return int_1; });
+    static_assert(std::is_same_v<decltype(ret_e), const int &>);
+    CHECK(&ret_e == &int_1);
+
+    decltype(auto) ret_f = match(
+        std::as_const(opt_value),                                    //
+        [&](std::nullopt_t) -> auto && { return std::move(int_0); }, //
+        [&](float) -> auto && { return std::move(int_1); });
+    static_assert(std::is_same_v<decltype(ret_f), int &&>);
+    CHECK(&ret_f == &int_1);
+
+    // common type is reference to the common base type of references
+
+    struct value_base {
+    } instance_base;
+    struct value_derived : value_base {
+    } instance_derived;
+
+    decltype(auto) ret_g = match(
+        opt_value,                                               //
+        [&](std::nullopt_t) -> auto & { return instance_base; }, //
+        [&](float) -> auto & { return instance_derived; });
+    static_assert(std::is_same_v<decltype(ret_g), value_base &>);
+    CHECK(&ret_g == &instance_derived);
+
+    decltype(auto) ret_h = match(
+        opt_value,                                                     //
+        [&](std::nullopt_t) -> const auto & { return instance_base; }, //
+        [&](float) -> const auto & { return instance_derived; });
+    static_assert(std::is_same_v<decltype(ret_h), const value_base &>);
+    CHECK(&ret_h == &instance_derived);
+
+    decltype(auto) ret_i = match(
+        opt_value,                                                           //
+        [&](std::nullopt_t) -> auto && { return std::move(instance_base); }, //
+        [&](float) -> auto && { return std::move(instance_derived); });
+    static_assert(std::is_same_v<decltype(ret_i), value_base &&>);
+    CHECK(&ret_i == &instance_derived);
+
+    // result is a common value type that can be constructed from all match arm results
+
+    constexpr static const char *string = "string";
+    decltype(auto) ret_j = match(
+        opt_value,                              //
+        [](std::nullopt_t) { return nullptr; }, //
+        [](float) { return string; });
+    static_assert(std::is_same_v<decltype(ret_j), const char *>);
+    CHECK(ret_j == string);
+
+    // constexpr variant match
+
+    constexpr std::optional<float> cx_opt(42.0);
+    constexpr decltype(auto) ret_k = match(
+        cx_opt,                           //
+        [](std::nullopt_t) { return 1; }, //
+        [](float) { return 2; });         //
+    CHECK(ret_k == 42.0);
+
+    // generic match arms behave as expected
+
+    decltype(auto) ret_l = match( //
+        std::optional<int>(99),   //
+        [](auto v) -> std::optional<int> { return v; });
+    static_assert(std::is_same_v<decltype(ret_l), std::optional<int>>);
+    CHECK(ret_l == std::optional<int>(99));
+}
+
 TEST_CASE("match on polymorphic visitors", "[utils]") {
     struct derived_a;
     struct derived_b;
