@@ -167,7 +167,7 @@ inline constexpr bool is_optional_v = is_optional_type_v<detail::remove_cvref_t<
 template <typename Ret, typename F, typename OptionalCVRef>
 constexpr Ret visit_optional_r(F &&f, OptionalCVRef &&optional) {
     // std::optional::operator*() forwards the cvref-qualification of the object.
-    // we do not use std::invoke here becaus it's not constexpr before C++20.
+    // TODO use std::invoke here when it becomes constexpr with C++20.
     return optional.has_value() ? std::forward<F>(f)(*std::forward<OptionalCVRef>(optional))
                                 : std::forward<F>(f)(std::nullopt);
 }
@@ -382,6 +382,8 @@ inline constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms) {
         detail::convert_result<result_type, overload_type>(overload_type(std::forward<Arms>(arms)...)),
         std::forward<OptionalCVRef>(o));
 }
+
+// TODO make all of these constexpr in C++20 (when we are allowed to do virtual function calls)
 
 template <typename Result, typename Visitor, typename T, typename... Arms, //
     std::enable_if_t<detail::is_polymorphic_visitor_v<Visitor>, int> = 0,
