@@ -19,7 +19,7 @@ matchbox is a ~500 LOC single-header C++17 library that gives you a `match` prim
 - `std::optional` (distinguish between `nullopt` and `value_type` – `constexpr` capable)
 - **inheritance hierarchies** on your own types (implemented with efficient double virtual dispatch)
 
-No configuration or building needed – just copy [matchbox.hh](include/matchbox.hh) into your source tree and get on your way.
+No configuration or building needed – just copy [matchbox.hh](include/matchbox.hh) into your source tree and be on your way!
 
 ## `match` on `std::variant`
 
@@ -96,13 +96,13 @@ class first_derived: public base {
     public:
         // the `accept` implementations on all deived types are syntactically identical
         // (but they select the appropriate overload of visitor::visit`)
-        void accept(visitor &visitor) const override { visitor.visit(*this); }
+        void accept(visitor &visitor) override { visitor.visit(*this); }
         void accept(const_visitor &visitor) const override { visitor.visit(*this); }
 };
 
 class first_derived: public base {
     public:
-        void accept(visitor &visitor) const override { visitor.visit(*this); }
+        void accept(visitor &visitor) override { visitor.visit(*this); }
         void accept(const_visitor &visitor) const override { visitor.visit(*this); }
 };
 
