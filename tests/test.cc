@@ -260,13 +260,39 @@ TEST_CASE("match on polymorphic visitors", "[utils]") {
 
     // base::visitor is default_visitor<base>
 
+    static_assert(std::is_same_v<matchbox::default_visitor_t<base>, base::visitor>);
     decltype(auto) ret2 = match<std::optional<int>>(
         ref, [](derived_a &) { return 0; }, [](derived_b &) { return std::nullopt; });
     static_assert(std::is_same_v<decltype(ret2), std::optional<int>>);
 
     // base::const_visitor is default_visitor<const base>
 
+    static_assert(std::is_same_v<matchbox::default_visitor_t<const base>, base::const_visitor>);
     decltype(auto) ret3 = match<std::optional<int>>(
         std::as_const(ref), [](const derived_a &) { return 0; }, [](const derived_b &) { return std::nullopt; });
     static_assert(std::is_same_v<decltype(ret3), std::optional<int>>);
+
+    // select the const_visitor as fallback if it is the only one that exists
+
+    struct only_const_visitor_base {
+        using const_visitor = matchbox::visitor<const int &>;
+    };
+    static_assert(
+        std::is_same_v<matchbox::default_visitor_t<only_const_visitor_base>, only_const_visitor_base::const_visitor>);
+    static_assert(std::is_same_v<matchbox::default_visitor_t<const only_const_visitor_base>,
+        only_const_visitor_base::const_visitor>);
+
+    struct only_non_const_visitor_base {
+        using visitor = matchbox::visitor<int &>;
+    };
+    static_assert(
+        std::is_same_v<matchbox::default_visitor_t<only_non_const_visitor_base>, only_non_const_visitor_base::visitor>);
+    // there is no default visitor for `const only_non_const_visitor_base`
+
+std::variant<int, const char*> var("Hello world!");
+
+auto magnitude = match(var,
+    [](int i) { return std::abs(i); },
+    [](const char *s) { return strlen(s); }
+);
 }

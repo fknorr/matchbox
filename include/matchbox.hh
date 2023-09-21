@@ -117,7 +117,14 @@ class visitor : public detail::declare_visit_fn<Ts>... {
   public:
     using polymorphic_visitor_tag = detail::polymorphic_visitor_tag<Ts...>;
 
+    visitor() = default;
+    visitor(const visitor &) = default;
+    visitor(visitor &&) = default;
+    visitor &operator=(const visitor &) = default;
+    visitor &operator=(visitor &&) = default;
+
     virtual ~visitor() = default;
+
     using detail::declare_visit_fn<Ts>::visit...;
 };
 
@@ -388,7 +395,7 @@ inline constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms) {
 template <typename Result, typename Visitor, typename T, typename... Arms, //
     std::enable_if_t<detail::is_polymorphic_visitor_v<Visitor>, int> = 0,
     std::enable_if_t<detail::accepts_visitor_v<T, Visitor>, int> = 0>
-inline decltype(auto) match(T &target, Arms &&...arms) {
+inline Result match(T &target, Arms &&...arms) {
     using overload_type = detail::overload<std::decay_t<Arms>...>;
     using visitor_tag = typename Visitor::polymorphic_visitor_tag;
     detail::assert_overload_invocable<overload_type, visitor_tag>();
@@ -401,7 +408,7 @@ inline decltype(auto) match(T &target, Arms &&...arms) {
 template <typename Result, typename T, typename... Arms, typename Visitor = default_visitor_t<T>, //
     std::enable_if_t<!detail::is_polymorphic_visitor_v<Result>, int> = 0,                         //
     std::enable_if_t<detail::accepts_visitor_v<T, Visitor>, int> = 0>
-inline decltype(auto) match(T &target, Arms &&...arms) {
+inline Result match(T &target, Arms &&...arms) {
     return match<Result, Visitor, T, Arms...>(target, std::forward<Arms>(arms)...);
 }
 
