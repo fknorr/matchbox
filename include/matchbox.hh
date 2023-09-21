@@ -197,7 +197,7 @@ inline constexpr bool is_overload_invocable_on_optional_v
 template <typename F, typename AltListCVRef, typename AltList = detail::remove_cvref_t<AltListCVRef>,
     typename Enable = void>
 struct assert_overload_invocable {
-    static_assert(constexpr_false<F>,
+    static_assert(constexpr_false<Enable>,
         "match arms do not cover all alternatives of the argument variant, or their parameters have incorrect cvref "
         "qualification");
 };
@@ -277,7 +277,7 @@ using common_invoke_result_t = typename common_invoke_result<F, AltListCVRef>::t
 
 template <typename F, typename AltListCVRef, typename Enable = void>
 struct assert_invoke_results_compatible {
-    static_assert(detail::constexpr_false<F>,
+    static_assert(detail::constexpr_false<Enable>,
         "results of match arms cannot be implicitly converted to a common type, use matchbox::match<Result>() to "
         "specify an explicit return type");
 };
