@@ -141,6 +141,13 @@ TEST_CASE("match on std::optional", "[utils]") {
     static_assert(std::is_same_v<decltype(ret_a), int>);
     CHECK(ret_a == 1);
 
+    decltype(auto) ret_a2 = match(
+        opt_null,                         //
+        [](std::nullopt_t) { return 0; }, //
+        [](float &) { return 1; });
+    static_assert(std::is_same_v<decltype(ret_a2), int>);
+    CHECK(ret_a2 == 0);
+
     decltype(auto) ret_b = match(
         std::as_const(opt_value),         //
         [](std::nullopt_t) { return 0; }, //
@@ -226,7 +233,7 @@ TEST_CASE("match on std::optional", "[utils]") {
         cx_opt,                           //
         [](std::nullopt_t) { return 1; }, //
         [](float) { return 2; });         //
-    CHECK(ret_k == 42.0);
+    CHECK(ret_k == 2);
 
     // generic match arms behave as expected
 
@@ -288,11 +295,95 @@ TEST_CASE("match on polymorphic visitors", "[utils]") {
     static_assert(
         std::is_same_v<matchbox::default_visitor_t<only_non_const_visitor_base>, only_non_const_visitor_base::visitor>);
     // there is no default visitor for `const only_non_const_visitor_base`
+}
 
-std::variant<int, const char*> var("Hello world!");
+TEST_CASE("README intro") {
+    std::variant<int, const char *> var("Hello world!");
 
-auto magnitude = match(var,
-    [](int i) { return std::abs(i); },
-    [](const char *s) { return strlen(s); }
-);
+    size_t magnitude = match(
+        var,                               //
+        [](int i) { return std::abs(i); }, //
+        [](const char *s) { return strlen(s); });
+    CHECK(magnitude == 12);
+}
+
+TEST_CASE("README std::variant (1)") {
+    std::variant<std::string, std::vector<int>, int, float> var(42);
+
+    const char *type_string = match(
+        var,                                              //
+        [](const std::string &) { return "string"; },     //
+        [](const std::vector<int> &) { return "array"; }, //
+        [](const auto & /* default */) { return "number"; });
+    CHECK(strcmp(type_string, "number") == 0);
+}
+
+TEST_CASE("README std::variant (2)") {
+    std::variant<int, float> num(4.20f);
+    int left = 1;
+    int right = 2;
+
+    int &var = match(
+        num,                                 //
+        [&](int) -> auto & { return left; }, //
+        [&](float) -> auto & { return right; });
+    CHECK(&var == &right);
+}
+
+TEST_CASE("README std::variant (3)") {
+    std::variant<std::string, std::vector<int>> heavy(std::string("lorem ipsum"));
+
+    match(
+        std::move(heavy),                                //
+        [](std::string &&str) { (void)std::move(str); }, //
+        [](std::vector<int> &&vec) { (void)std::move(vec); });
+}
+TEST_CASE("README std::optional") {
+    std::optional<unsigned int> opt(123u);
+
+    int next = match(
+        opt,                                  //
+        [](unsigned int i) { return i + 1; }, //
+        [](std::nullopt_t) { return 0; });
+    CHECK(next == 124);
+}
+
+TEST_CASE("README on inheritance hierarchies") {
+    class first_derived;
+    class second_derived;
+
+    class base {
+      public:
+        // depending on wether any of your match statements needs const or non-const references
+        // to the type, define `visitor`, `const_visitor`, or both.
+        using visitor = matchbox::visitor<first_derived &, second_derived &>;
+        using const_visitor = matchbox::visitor<const first_derived &, const second_derived &>;
+
+        // only `accept` methods for the visitor types you defined above are required.
+        virtual void accept(visitor &visitor) = 0;
+        virtual void accept(const_visitor &visitor) const = 0;
+    };
+
+    class first_derived : public base {
+      public:
+        // the `accept` implementations on all deived types are syntactically identical
+        // (but they select the appropriate overload of visitor::visit`)
+        void accept(visitor &visitor) override { visitor.visit(*this); }
+        void accept(const_visitor &visitor) const override { visitor.visit(*this); }
+    };
+
+    class second_derived : public base {
+      public:
+        void accept(visitor &visitor) override { visitor.visit(*this); }
+        void accept(const_visitor &visitor) const override { visitor.visit(*this); }
+    };
+
+    first_derived instance;
+    const base &ref = instance;
+
+    int which = match(
+        ref,                                     //
+        [](const first_derived &) { return 1; }, //
+        [](const second_derived &) { return 2; });
+    CHECK(which == 1);
 }

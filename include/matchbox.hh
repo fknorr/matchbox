@@ -418,6 +418,7 @@ template <typename Visitor, typename T, typename... Arms,                 //
 inline decltype(auto) match(T &target, Arms &&...arms) {
     using overload_type = detail::overload<std::decay_t<Arms>...>;
     using visitor_tag = typename Visitor::polymorphic_visitor_tag;
+    detail::assert_overload_invocable<overload_type, visitor_tag>();
     detail::assert_invoke_results_compatible<overload_type, visitor_tag>();
 
     using result_type = detail::common_invoke_result_t<overload_type, visitor_tag>;

@@ -42,9 +42,9 @@ std::variant<int, float> num(4.20f);
 int left = 1, right = 2;
 
 int &var = match(num,
-    [](int) -> auto& { return left; }
-    [](float) -> auto& { return right; }
-); // => left
+    [&](int) -> auto& { return left; },
+    [&](float) -> auto& { return right; }
+); // => right
 ```
 
 If the argument type is any kind of reference, it will be forwarded appropriately into the match arms:
@@ -63,9 +63,9 @@ For `std::optional`, matchbox allows you to choose a path for both `has_value()`
 ```c++
 std::optional<unsigned int> opt(123u);
 
-int next = match(num,
-    [](unsigned int i) { return i + 1; }
-    [](std::nullopt) { return 0; }
+int next = match(opt,
+    [](unsigned int i) { return i + 1; },
+    [](std::nullopt_t) { return 0; }
 ); // => 124
 ```
 
@@ -100,7 +100,7 @@ class first_derived: public base {
         void accept(const_visitor &visitor) const override { visitor.visit(*this); }
 };
 
-class first_derived: public base {
+class second_derived: public base {
     public:
         void accept(visitor &visitor) override { visitor.visit(*this); }
         void accept(const_visitor &visitor) const override { visitor.visit(*this); }
@@ -113,7 +113,7 @@ const base &ref = instance;
 
 int which = match(ref,
     [](const first_derived &) { return 1; },
-    [](const first_derived &) { return 2; }
+    [](const second_derived &) { return 2; }
 ); // => 1
 ```
 
