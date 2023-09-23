@@ -72,7 +72,7 @@ int next = match(opt,
 ## `match` on inheritance hierarchies
 
 matchbox also allows you to enter a `match` statement based on dynamic class type.
-This is implemented through an ad-hoc visitor pattern, which means it's reasonably fast (implemented using double virtual dispatch, no `dynamic_casts`).
+This is implemented through double dispatch using an ad-hoc visitor implementation, which means it's reasonably fast (two virtual function calls, no `dynamic_cast` or other RTTI involved).
 
 This feature requires some light boilerplate to tell matchbox to implement the appropriate acceptor hierarchy:
 
@@ -99,6 +99,18 @@ int which = match(
     [](const first_derived &) { return 1; },
     [](const second_derived &) { return 2; }
 ); // => 1
+```
+
+Note how in the example above, the derived classes can even be forward-declared within the template parameters to `acceptor` (although they can of course be declared anywhere else prior to that).
+
+If you are in a situation with a large number of derived classes and the base class list gets unwieldy, use a typedef with `matchbox::type_list` to hoist it out of the class definition:
+
+```c++
+using derived_types = matchbox::type_list<class first_derived, class second_derived>;
+
+class base : public derived_types::acceptor {
+    // ...
+};
 ```
 
 ## API Reference
