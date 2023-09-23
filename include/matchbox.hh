@@ -5,6 +5,11 @@
 #include <type_traits>
 #include <variant>
 
+#if !defined(MATCHBOX_ASSERT) && !defined(NDEBUG)
+#include <cassert>
+#define MATCHBOX_ASSERT(x, msg) assert(x && msg)
+#endif
+
 namespace matchbox::detail {
 
 template <typename T>
@@ -430,5 +435,81 @@ template <typename T, typename... Arms, typename Visitor = default_visitor_t<T>,
 inline decltype(auto) match(T &target, Arms &&...arms) {
     return match<Visitor, T, Arms...>(target, std::forward<Arms>(arms)...);
 }
+
+// TODO move to detail
+
+template <typename Derived, typename IsACompleteTypeAtTimeOfAssertion = void>
+struct assert_implements_correct_acceptor {};
+
+template <typename Derived>
+struct assert_implements_correct_acceptor<Derived, std::void_t<int[sizeof(Derived)]>> {
+    static_assert(std::is_same_v<typename Derived::implements_acceptor_for, Derived>,
+        "at least one derived acceptor type does not inherit from the correct specialization of "
+        "matchbox::implement_acceptor");
+};
+
+template <typename... Derived>
+class acceptor {
+  public:
+    using visitor = matchbox::visitor<Derived &...>;
+    using const_visitor = matchbox::visitor<const Derived &...>;
+    using rvalue_visitor = matchbox::visitor<Derived &&...>;
+
+    virtual void accept(visitor &) & = 0;
+    virtual void accept(const_visitor &) const & = 0;
+    virtual void accept(rvalue_visitor &) && = 0;
+
+  protected:
+    inline constexpr acceptor() noexcept { (assert_implements_correct_acceptor<Derived>(), ...); }
+
+    ~acceptor() = default;
+    acceptor(const acceptor &) = default;
+    acceptor(acceptor &&) = default;
+    acceptor &operator=(const acceptor &) = default;
+    acceptor &operator=(acceptor &&) = default;
+};
+
+template <typename Base, typename Derived>
+class implement_acceptor : public Base {
+  public:
+    void accept(typename Base::visitor &v) & override {
+        assert_dynamic_type_is_derived_type();
+        v.visit(static_cast<Derived &>(*this));
+    }
+
+    void accept(typename Base::const_visitor &v) const & override {
+        assert_dynamic_type_is_derived_type();
+        v.visit(static_cast<const Derived &>(*this));
+    }
+
+    void accept(typename Base::rvalue_visitor &v) && override {
+        assert_dynamic_type_is_derived_type();
+        v.visit(static_cast<Derived &&>(*this));
+    }
+
+  protected:
+    inline constexpr implement_acceptor() noexcept { //
+        static_assert(std::is_base_of_v<implement_acceptor, Derived>);
+    }
+
+    ~implement_acceptor() = default;
+    implement_acceptor(const implement_acceptor &) = default;
+    implement_acceptor(implement_acceptor &&) = default;
+    implement_acceptor &operator=(const implement_acceptor &) = default;
+    implement_acceptor &operator=(implement_acceptor &&) = default;
+
+  private:
+    template <typename, typename>
+    friend struct assert_implements_correct_acceptor;
+
+    using implements_acceptor_for = Derived;
+
+    void assert_dynamic_type_is_derived_type() const {
+        MATCHBOX_ASSERT(dynamic_cast<const Derived *>(this) == static_cast<const Derived *>(this),
+            "Derived type does not inherit from implement_acceptor<Base, Derived>");
+    }
+};
+
+// TODO now that we have implement_acceptor, we can get rid of default_visitor!
 
 } // namespace matchbox

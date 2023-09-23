@@ -1,7 +1,12 @@
-#include <matchbox.hh>
-
 #define CATCH_CONFIG_MAIN 1
 #include <catch2/catch.hpp>
+
+void throw_unless(const bool x, const char *msg) {
+    if(!x) { throw std::runtime_error(msg); }
+}
+
+#define MATCHBOX_ASSERT throw_unless
+#include <matchbox.hh>
 
 using namespace matchbox;
 
@@ -366,7 +371,7 @@ TEST_CASE("README on inheritance hierarchies") {
 
     class first_derived : public base {
       public:
-        // the `accept` implementations on all deived types are syntactically identical
+        // the `accept` implementations on all derived types are syntactically identical
         // (but they select the appropriate overload of visitor::visit`)
         void accept(visitor &visitor) override { visitor.visit(*this); }
         void accept(const_visitor &visitor) const override { visitor.visit(*this); }
@@ -387,3 +392,26 @@ TEST_CASE("README on inheritance hierarchies") {
         [](const second_derived &) { return 2; });
     CHECK(which == 1);
 }
+
+#ifndef NDEBUG
+
+TEST_CASE("incorrect inheritance from implement_acceptor is detected at runtime") {
+    class base : public matchbox::acceptor<class first_derived, class second_derived> {};
+    class first_derived : public matchbox::implement_acceptor<base, first_derived> {};
+
+    // this instantiates base::base(), which skips the static assertion on second_derived
+    // because that type is not defined yet
+    const first_derived instance1;
+
+    // typo: inherits from <first_derived> instead of <second_derived>
+    class second_derived : public matchbox::implement_acceptor<base, first_derived> {};
+    const second_derived instance2;
+
+    // must now cause an assertion failure in second_derived::accept()
+    CHECK_THROWS_WITH(
+        match(
+            static_cast<const base &>(instance2), [](const first_derived &) {}, [](const second_derived &) {}),
+        "Derived type does not inherit from implement_acceptor<Base, Derived>");
+}
+
+#endif
