@@ -33,75 +33,69 @@ class impl_visit_fn<Base, Fn, Ret, T, Ts...> : public impl_visit_fn<Base, Fn, Re
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret> : public Base {
+class impl_visit_fn<Base, Fn, Ret> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
     Ret get_result() { return std::move(*m_ret); }
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret>);
-        m_ret.emplace(static_cast<Ret>(m_fn(static_cast<T>(v))));
+        m_ret.emplace(static_cast<Ret>(static_cast<Fn&>(*this)(static_cast<T>(v))));
     }
 
   private:
-    Fn m_fn;
     std::optional<Ret> m_ret;
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret &> : public Base {
+class impl_visit_fn<Base, Fn, Ret &> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
     Ret &get_result() { return *m_ret; }
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &>);
-        m_ret = &static_cast<Ret &>(m_fn(static_cast<T>(v)));
+        m_ret = &static_cast<Ret &>(static_cast<Fn&>(*this)(static_cast<T>(v)));
     }
 
   private:
-    Fn m_fn;
     Ret *m_ret = nullptr;
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret &&> : public Base {
+class impl_visit_fn<Base, Fn, Ret &&> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
     Ret &&get_result() { return std::move(*m_ret); }
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &&>);
-        Ret &&name = static_cast<Ret &&>(m_fn(static_cast<T>(v)));
+        Ret &&name = static_cast<Ret &&>(static_cast<Fn&>(*this)(static_cast<T>(v)));
         m_ret = &name;
     }
 
   private:
-    Fn m_fn;
-    Ret *m_ret;
+    Ret *m_ret = nullptr;
 };
 
 template <typename Base, typename Fn>
-class impl_visit_fn<Base, Fn, void> : public Base {
+class impl_visit_fn<Base, Fn, void> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
     void get_result() {}
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_void_v<std::invoke_result_t<Fn, T>>);
-        m_fn(static_cast<T>(v));
+        static_cast<Fn&>(*this)(static_cast<T>(v));
     }
-
-  private:
-    Fn m_fn;
 };
 
 template <typename... Ts>
