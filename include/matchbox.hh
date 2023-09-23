@@ -5,102 +5,98 @@
 #include <type_traits>
 #include <variant>
 
+#if !defined(MATCHBOX_ASSERT) && !defined(NDEBUG)
+#include <cassert>
+#define MATCHBOX_ASSERT(x, msg) assert(x &&msg)
+#endif
+
 namespace matchbox::detail {
 
 template <typename T>
-class declare_visit_fn {
+class declare_visit_function {
   public:
     virtual void visit(T) = 0;
 };
 
 template <typename Base, typename Fn, typename Ret, typename... Ts>
-class impl_visit_fn;
+class implement_visit_function;
 
 template <typename Base, typename Fn, typename Ret, typename T, typename... Ts>
-class impl_visit_fn<Base, Fn, Ret, T, Ts...> : public impl_visit_fn<Base, Fn, Ret, Ts...> {
+class implement_visit_function<Base, Fn, Ret, T, Ts...> : public implement_visit_function<Base, Fn, Ret, Ts...> {
   private:
-    using next = impl_visit_fn<Base, Fn, Ret, Ts...>;
+    using next = implement_visit_function<Base, Fn, Ret, Ts...>;
 
   public:
-    explicit impl_visit_fn(Fn &&fn) : next(std::move(fn)) {}
-    void visit(T v) final { next::template invoke<T>(v); }
+    explicit implement_visit_function(Fn &&fn) : next(std::move(fn)) {}
+    void visit(T v) final { next::template invoke<T>(static_cast<T>(v)); }
     using next::visit;
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret> : public Base {
+class implement_visit_function<Base, Fn, Ret> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     Ret get_result() { return std::move(*m_ret); }
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret>);
-        m_ret.emplace(static_cast<Ret>(std::invoke(m_fn, static_cast<T>(v))));
+        m_ret.emplace(static_cast<Ret>(static_cast<Fn &>(*this)(static_cast<T>(v))));
     }
 
   private:
-    Fn m_fn;
     std::optional<Ret> m_ret;
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret &> : public Base {
+class implement_visit_function<Base, Fn, Ret &> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     Ret &get_result() { return *m_ret; }
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &>);
-        m_ret = &static_cast<Ret &>(std::invoke(m_fn, static_cast<T>(v)));
+        m_ret = &static_cast<Ret &>(static_cast<Fn &>(*this)(static_cast<T>(v)));
     }
 
   private:
-    Fn m_fn;
     Ret *m_ret = nullptr;
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret &&> : public Base {
+class implement_visit_function<Base, Fn, Ret &&> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     Ret &&get_result() { return std::move(*m_ret); }
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &&>);
-        Ret &&name = static_cast<Ret &&>(std::invoke(m_fn, static_cast<T>(v)));
+        Ret &&name = static_cast<Ret &&>(static_cast<Fn &>(*this)(static_cast<T>(v)));
         m_ret = &name;
     }
 
   private:
-    Fn m_fn;
-    Ret *m_ret;
+    Ret *m_ret = nullptr;
 };
 
 template <typename Base, typename Fn>
-class impl_visit_fn<Base, Fn, void> : public Base {
+class implement_visit_function<Base, Fn, void> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : m_fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     void get_result() {}
 
   protected:
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_void_v<std::invoke_result_t<Fn, T>>);
-        std::invoke(m_fn, static_cast<T>(v));
+        static_cast<Fn &>(*this)(static_cast<T>(v));
     }
-
-  private:
-    Fn m_fn;
 };
-
-template <typename... Ts>
-struct polymorphic_visitor_tag {};
 
 template <typename...>
 inline constexpr bool constexpr_false = false;
@@ -108,24 +104,117 @@ inline constexpr bool constexpr_false = false;
 template <typename T>
 using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
 
+template <typename Derived, typename IsACompleteTypeAtTimeOfAssertion = void>
+struct assert_implements_correct_acceptor {};
+
+template <typename Derived>
+struct assert_implements_correct_acceptor<Derived, std::void_t<int[sizeof(Derived)]>> {
+    static_assert(std::is_same_v<typename Derived::implements_acceptor_for, Derived>,
+        "at least one derived acceptor type does not inherit from the correct specialization of "
+        "matchbox::implement_acceptor");
+};
+
 } // namespace matchbox::detail
 
 namespace matchbox {
 
 template <typename... Ts>
-class visitor : public detail::declare_visit_fn<Ts>... {
-  public:
-    using polymorphic_visitor_tag = detail::polymorphic_visitor_tag<Ts...>;
+class visitor;
 
+template <typename... Derived>
+class acceptor;
+
+template <typename... Ts>
+struct type_list {
+    using acceptor = matchbox::acceptor<Ts...>;
+    using visitor = matchbox::visitor<Ts &...>;
+    using const_visitor = matchbox::visitor<const Ts &...>;
+    using move_visitor = matchbox::visitor<Ts &&...>;
+
+    ~type_list() = delete;
+};
+
+template <typename... Ts>
+class visitor : private detail::declare_visit_function<Ts>... {
+  public:
+    using visited_types = type_list<Ts...>;
+
+    virtual ~visitor() = default;
+
+    using detail::declare_visit_function<Ts>::visit...;
+
+  protected:
     visitor() = default;
     visitor(const visitor &) = default;
     visitor(visitor &&) = default;
     visitor &operator=(const visitor &) = default;
     visitor &operator=(visitor &&) = default;
+};
 
-    virtual ~visitor() = default;
+template <typename... Derived>
+class acceptor {
+  public:
+    using visitor = typename type_list<Derived...>::visitor;
+    using const_visitor = typename type_list<Derived...>::const_visitor;
+    using move_visitor = typename type_list<Derived...>::move_visitor;
 
-    using detail::declare_visit_fn<Ts>::visit...;
+    virtual ~acceptor() = default;
+
+    virtual void accept(visitor &) & = 0;
+    virtual void accept(const_visitor &) const & = 0;
+    virtual void accept(move_visitor &) && = 0;
+
+  protected:
+    inline constexpr acceptor() noexcept { (detail::assert_implements_correct_acceptor<Derived>(), ...); }
+    acceptor(const acceptor &) = default;
+    acceptor(acceptor &&) = default;
+    acceptor &operator=(const acceptor &) = default;
+    acceptor &operator=(acceptor &&) = default;
+};
+
+template <typename Base, typename Derived>
+class implement_acceptor : public Base {
+  public:
+    using typename Base::const_visitor;
+    using typename Base::move_visitor;
+    using typename Base::visitor;
+
+    void accept(visitor &v) & override {
+        assert_dynamic_type_is_derived_type();
+        v.visit(static_cast<Derived &>(*this));
+    }
+
+    void accept(const_visitor &v) const & override {
+        assert_dynamic_type_is_derived_type();
+        v.visit(static_cast<const Derived &>(*this));
+    }
+
+    void accept(move_visitor &v) && override {
+        assert_dynamic_type_is_derived_type();
+        v.visit(static_cast<Derived &&>(*this));
+    }
+
+  protected:
+    inline constexpr implement_acceptor() noexcept { //
+        static_assert(std::is_base_of_v<implement_acceptor, Derived>);
+    }
+
+    ~implement_acceptor() = default;
+    implement_acceptor(const implement_acceptor &) = default;
+    implement_acceptor(implement_acceptor &&) = default;
+    implement_acceptor &operator=(const implement_acceptor &) = default;
+    implement_acceptor &operator=(implement_acceptor &&) = default;
+
+  private:
+    template <typename, typename>
+    friend struct detail::assert_implements_correct_acceptor;
+
+    using implements_acceptor_for = Derived;
+
+    void assert_dynamic_type_is_derived_type() const {
+        MATCHBOX_ASSERT(dynamic_cast<const Derived *>(this) == static_cast<const Derived *>(this),
+            "Derived type does not inherit from implement_acceptor<Base, Derived>");
+    }
 };
 
 } // namespace matchbox
@@ -211,8 +300,8 @@ struct assert_overload_invocable<F, OptionalCVRef, std::optional<T>,
     std::enable_if_t<is_overload_invocable_on_optional_v<F, OptionalCVRef>>> {};
 
 template <typename F, typename TagCVRef, typename... Ts>
-struct assert_overload_invocable<F, TagCVRef, polymorphic_visitor_tag<Ts...>,
-    std::enable_if_t<(std::is_invocable_v<F, Ts> && ...)>> {};
+struct assert_overload_invocable<F, TagCVRef, type_list<Ts...>, std::enable_if_t<(std::is_invocable_v<F, Ts> && ...)>> {
+};
 
 template <typename... Ts>
 struct common_cvref_type {
@@ -268,7 +357,7 @@ template <typename F, typename OptionalCVRef, typename T>
 struct common_invoke_result<F, OptionalCVRef, std::optional<T>> : common_optional_invoke_result<F, OptionalCVRef> {};
 
 template <typename F, typename TagCVRef, typename... Ts>
-struct common_invoke_result<F, TagCVRef, polymorphic_visitor_tag<Ts...>> {
+struct common_invoke_result<F, TagCVRef, type_list<Ts...>> {
     using type = common_cvref_type_t<std::invoke_result_t<F, Ts>...>;
 };
 
@@ -285,64 +374,37 @@ struct assert_invoke_results_compatible {
 template <typename F, typename AltListCVRef>
 struct assert_invoke_results_compatible<F, AltListCVRef, std::void_t<common_invoke_result_t<F, AltListCVRef>>> {};
 
-template <typename CVRef, typename Enable = void>
-inline constexpr bool is_polymorphic_visitor_v = false;
-
-template <typename CVRef>
-inline constexpr bool
-    is_polymorphic_visitor_v<CVRef, std::void_t<typename detail::remove_cvref_t<CVRef>::polymorphic_visitor_tag>>
-    = true;
-
 template <typename Result, typename Visitor, typename Fn>
 class visitor_impl;
 
 template <typename Result, typename... Ts, typename Fn>
 class visitor_impl<Result, matchbox::visitor<Ts...>, Fn>
-    : public impl_visit_fn<matchbox::visitor<Ts...>, Fn, Result, Ts...> {
+    : public implement_visit_function<matchbox::visitor<Ts...>, Fn, Result, Ts...> {
   public:
-    using impl_visit_fn<matchbox::visitor<Ts...>, Fn, Result, Ts...>::impl_visit_fn;
+    using implement_visit_function<matchbox::visitor<Ts...>, Fn, Result, Ts...>::implement_visit_function;
 };
 
-template <typename T, typename Visitor, typename Enable = void>
-inline constexpr bool accepts_visitor_v = false;
+template <typename AcceptorCVRef, typename Enable = void>
+struct select_visitor;
 
-template <typename T, typename Visitor>
-inline constexpr bool
-    accepts_visitor_v<T, Visitor, std::void_t<decltype(std::declval<T>().accept(std::declval<Visitor &>()))>>
-    = true;
+template <typename Acceptor>
+struct select_visitor<Acceptor &, std::void_t<typename Acceptor::const_visitor, typename Acceptor::visitor>> {
+    using type
+        = std::conditional_t<std::is_const_v<Acceptor>, typename Acceptor::const_visitor, typename Acceptor::visitor>;
+};
 
-template <typename T, typename Enable = void>
-inline constexpr bool declares_const_visitor_v = false;
+template <typename Acceptor>
+struct select_visitor<Acceptor &&, std::void_t<typename Acceptor::const_visitor, typename Acceptor::move_visitor>> {
+    using type = std::conditional_t<std::is_const_v<Acceptor>, typename Acceptor::const_visitor,
+        typename Acceptor::move_visitor>;
+};
 
-template <typename T>
-inline constexpr bool declares_const_visitor_v<T, std::void_t<typename T::const_visitor>> = true;
-
-template <typename T, typename Enable = void>
-inline constexpr bool declares_visitor_v = false;
-
-template <typename T>
-inline constexpr bool declares_visitor_v<T, std::void_t<typename T::visitor>> = true;
+template <typename AcceptorCVRef>
+using select_visitor_t = typename select_visitor<AcceptorCVRef>::type;
 
 } // namespace matchbox::detail
 
 namespace matchbox {
-
-template <typename T, typename Enable = void>
-struct default_visitor;
-
-template <typename T>
-struct default_visitor<T,
-    std::enable_if_t<detail::declares_const_visitor_v<T> && (std::is_const_v<T> || !detail::declares_visitor_v<T>)>> {
-    using type = typename T::const_visitor;
-};
-
-template <typename T>
-struct default_visitor<T, std::enable_if_t<detail::declares_visitor_v<T> && !std::is_const_v<T>>> {
-    using type = typename T::visitor;
-};
-
-template <typename T>
-using default_visitor_t = typename default_visitor<T>::type;
 
 template <typename Result, typename VariantCVRef, typename... Arms, //
     std::enable_if_t<detail::is_variant_v<VariantCVRef>, int> = 0>
@@ -392,43 +454,29 @@ inline constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms) {
 
 // TODO make all of these constexpr in C++20 (when we are allowed to do virtual function calls)
 
-template <typename Result, typename Visitor, typename T, typename... Arms, //
-    std::enable_if_t<detail::is_polymorphic_visitor_v<Visitor>, int> = 0,
-    std::enable_if_t<detail::accepts_visitor_v<T, Visitor>, int> = 0>
-inline Result match(T &target, Arms &&...arms) {
-    using overload_type = detail::overload<std::decay_t<Arms>...>;
-    using visitor_tag = typename Visitor::polymorphic_visitor_tag;
-    detail::assert_overload_invocable<overload_type, visitor_tag>();
+template <typename Result, typename AcceptorCVRef, typename... Arms,
+    typename Visitor = detail::select_visitor_t<AcceptorCVRef &&>>
+inline Result match(AcceptorCVRef &&acceptor, Arms &&...arms) {
+    using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
+    using visited_types = typename Visitor::visited_types;
+    detail::assert_overload_invocable<overload_type, visited_types>();
 
     detail::visitor_impl<Result, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
-    target.accept(vis);
+    std::forward<AcceptorCVRef>(acceptor).accept(vis);
     return vis.get_result();
 }
 
-template <typename Result, typename T, typename... Arms, typename Visitor = default_visitor_t<T>, //
-    std::enable_if_t<!detail::is_polymorphic_visitor_v<Result>, int> = 0,                         //
-    std::enable_if_t<detail::accepts_visitor_v<T, Visitor>, int> = 0>
-inline Result match(T &target, Arms &&...arms) {
-    return match<Result, Visitor, T, Arms...>(target, std::forward<Arms>(arms)...);
-}
+template <typename AcceptorCVRef, typename... Arms, typename Visitor = detail::select_visitor_t<AcceptorCVRef &&>>
+inline decltype(auto) match(AcceptorCVRef &&acceptor, Arms &&...arms) {
+    using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
+    using visited_types = typename Visitor::visited_types;
+    detail::assert_overload_invocable<overload_type, visited_types>();
+    detail::assert_invoke_results_compatible<overload_type, visited_types>();
 
-template <typename Visitor, typename T, typename... Arms,                 //
-    std::enable_if_t<detail::is_polymorphic_visitor_v<Visitor>, int> = 0, //
-    std::enable_if_t<detail::accepts_visitor_v<T, Visitor>, int> = 0>
-inline decltype(auto) match(T &target, Arms &&...arms) {
-    using overload_type = detail::overload<std::decay_t<Arms>...>;
-    using visitor_tag = typename Visitor::polymorphic_visitor_tag;
-    detail::assert_overload_invocable<overload_type, visitor_tag>();
-    detail::assert_invoke_results_compatible<overload_type, visitor_tag>();
-
-    using result_type = detail::common_invoke_result_t<overload_type, visitor_tag>;
-    return match<result_type, Visitor, T, Arms...>(target, std::forward<Arms>(arms)...);
-}
-
-template <typename T, typename... Arms, typename Visitor = default_visitor_t<T>, //
-    std::enable_if_t<detail::accepts_visitor_v<T, Visitor>, int> = 0>
-inline decltype(auto) match(T &target, Arms &&...arms) {
-    return match<Visitor, T, Arms...>(target, std::forward<Arms>(arms)...);
+    using result_type = detail::common_invoke_result_t<overload_type, visited_types>;
+    detail::visitor_impl<result_type, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
+    std::forward<AcceptorCVRef>(acceptor).accept(vis);
+    return vis.get_result();
 }
 
 } // namespace matchbox
