@@ -454,20 +454,20 @@ inline constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms) {
 
 // TODO make all of these constexpr in C++20 (when we are allowed to do virtual function calls)
 
-template <typename Result, typename Acceptor, typename... Arms,
-    typename Visitor = detail::select_visitor_t<Acceptor &&>>
-inline Result match(Acceptor &&acceptor, Arms &&...arms) {
+template <typename Result, typename AcceptorCVRef, typename... Arms,
+    typename Visitor = detail::select_visitor_t<AcceptorCVRef &&>>
+inline Result match(AcceptorCVRef &&acceptor, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
     using visited_types = typename Visitor::visited_types;
     detail::assert_overload_invocable<overload_type, visited_types>();
 
     detail::visitor_impl<Result, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
-    std::forward<Acceptor>(acceptor).accept(vis);
+    std::forward<AcceptorCVRef>(acceptor).accept(vis);
     return vis.get_result();
 }
 
-template <typename Acceptor, typename... Arms, typename Visitor = detail::select_visitor_t<Acceptor &&>>
-inline decltype(auto) match(Acceptor &&acceptor, Arms &&...arms) {
+template <typename AcceptorCVRef, typename... Arms, typename Visitor = detail::select_visitor_t<AcceptorCVRef &&>>
+inline decltype(auto) match(AcceptorCVRef &&acceptor, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
     using visited_types = typename Visitor::visited_types;
     detail::assert_overload_invocable<overload_type, visited_types>();
@@ -475,7 +475,7 @@ inline decltype(auto) match(Acceptor &&acceptor, Arms &&...arms) {
 
     using result_type = detail::common_invoke_result_t<overload_type, visited_types>;
     detail::visitor_impl<result_type, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
-    std::forward<Acceptor>(acceptor).accept(vis);
+    std::forward<AcceptorCVRef>(acceptor).accept(vis);
     return vis.get_result();
 }
 

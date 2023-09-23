@@ -141,14 +141,14 @@ template <typename OptionalCVRef, typename... Arms>
 constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms);
 
 // Match on a base-class reference, and specify an explicit result type.
-// Only selected if matchbox::acceptor<...> is a base class of `Acceptor`.
-template <typename Result, typename Acceptor, typename... Arms>
-Result match(Acceptor &&acceptor, Arms &&...arms);
+// Only selected if the Acceptor type is derived from matchbox::acceptor<...>.
+template <typename Result, typename AcceptorCVRef, typename... Arms>
+Result match(AcceptorCVRef &&acceptor, Arms &&...arms);
 
 // Match on a base-class reference and return the cvref-qualified std::common_type of results.
-// Only selected if matchbox::acceptor<...> is a base class of `Acceptor`.
-template <typename Acceptor, typename... Arms>
-inline decltype(auto) match(Acceptor &&acceptor, Arms &&...arms);
+// Only selected if the Acceptor type is derived from matchbox::acceptor<...>.
+template <typename AcceptorCVRef, typename... Arms>
+inline decltype(auto) match(AcceptorCVRef &&acceptor, Arms &&...arms);
 
 }
 ```
