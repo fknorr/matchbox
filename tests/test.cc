@@ -308,6 +308,36 @@ TEST_CASE("match on polymorphic acceptors") {
         [](derived_b &&) { return std::optional(0); }, //
         [](auto &&) { return std::nullopt; });
     static_assert(std::is_same_v<decltype(ret7), std::optional<int>>);
+
+    // can return references
+
+    int int_1 = 1;
+    int int_2 = 2;
+    int int_3 = 3;
+
+    decltype(auto) ret8 = match(
+        instance,                                    //
+        [&](derived_a &) -> int & { return int_1; }, //
+        [&](derived_b &) -> int & { return int_2; }, //
+        [&](derived_c &) -> int & { return int_3; });
+    static_assert(std::is_same_v<decltype(ret8), int &>);
+    CHECK(&ret8 == &int_2);
+
+    decltype(auto) ret9 = match(
+        instance,                                          //
+        [&](derived_a &) -> const int & { return int_1; }, //
+        [&](derived_b &) -> const int & { return int_2; }, //
+        [&](derived_c &) -> const int & { return int_3; });
+    static_assert(std::is_same_v<decltype(ret9), const int &>);
+    CHECK(&ret9 == &int_2);
+
+    decltype(auto) ret10 = match(
+        instance,                                                //
+        [&](derived_a &) -> int && { return std::move(int_1); }, //
+        [&](derived_b &) -> int && { return std::move(int_2); }, //
+        [&](derived_c &) -> int && { return std::move(int_3); });
+    static_assert(std::is_same_v<decltype(ret10), int &&>);
+    CHECK(&ret10 == &int_2);
 }
 
 TEST_CASE("incorrect inheritance from implement_acceptor is detected at runtime") {
@@ -370,6 +400,7 @@ TEST_CASE("README std::variant (3)") {
         [](std::string &&str) { (void)std::move(str); }, //
         [](std::vector<int> &&vec) { (void)std::move(vec); });
 }
+
 TEST_CASE("README std::optional") {
     std::optional<unsigned int> opt(123u);
 
@@ -381,33 +412,16 @@ TEST_CASE("README std::optional") {
 }
 
 TEST_CASE("README on inheritance hierarchies") {
-    class first_derived;
-    class second_derived;
-
-    class base {
-      public:
-        // depending on wether any of your match statements needs const or non-const references
-        // to the type, define `visitor`, `const_visitor`, or both.
-        using visitor = matchbox::visitor<first_derived &, second_derived &>;
-        using const_visitor = matchbox::visitor<const first_derived &, const second_derived &>;
-
-        // only `accept` methods for the visitor types you defined above are required.
-        virtual void accept(visitor &visitor) = 0;
-        virtual void accept(const_visitor &visitor) const = 0;
+    class base : public matchbox::acceptor<class first_derived, class second_derived> {
+        // ...
     };
 
-    class first_derived : public base {
-      public:
-        // the `accept` implementations on all derived types are syntactically identical
-        // (but they select the appropriate overload of visitor::visit`)
-        void accept(visitor &visitor) override { visitor.visit(*this); }
-        void accept(const_visitor &visitor) const override { visitor.visit(*this); }
+    class first_derived : public matchbox::implement_acceptor<base, first_derived> {
+        // ...
     };
 
-    class second_derived : public base {
-      public:
-        void accept(visitor &visitor) override { visitor.visit(*this); }
-        void accept(const_visitor &visitor) const override { visitor.visit(*this); }
+    class second_derived : public matchbox::implement_acceptor<base, second_derived> {
+        // ...
     };
 
     first_derived instance;
@@ -420,6 +434,10 @@ TEST_CASE("README on inheritance hierarchies") {
     CHECK(which == 1);
 }
 
-#ifndef NDEBUG
+TEST_CASE("README on inheritance hierarchies (2)") {
+    using derived_types = matchbox::type_list<class first_derived, class second_derived>;
 
-#endif
+    class base : public derived_types::acceptor {
+        // ...
+    };
+}

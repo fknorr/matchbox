@@ -135,19 +135,20 @@ struct type_list {
 };
 
 template <typename... Ts>
-class visitor : public detail::declare_visit_fn<Ts>... {
+class visitor : private detail::declare_visit_fn<Ts>... {
   public:
     using visited_types = type_list<Ts...>;
 
+    virtual ~visitor() = default;
+
+    using detail::declare_visit_fn<Ts>::visit...;
+
+  protected:
     visitor() = default;
     visitor(const visitor &) = default;
     visitor(visitor &&) = default;
     visitor &operator=(const visitor &) = default;
     visitor &operator=(visitor &&) = default;
-
-    virtual ~visitor() = default;
-
-    using detail::declare_visit_fn<Ts>::visit...;
 };
 
 template <typename... Derived>
@@ -157,14 +158,14 @@ class acceptor {
     using const_visitor = typename type_list<Derived...>::const_visitor;
     using move_visitor = typename type_list<Derived...>::move_visitor;
 
+    virtual ~acceptor() = default;
+
     virtual void accept(visitor &) & = 0;
     virtual void accept(const_visitor &) const & = 0;
     virtual void accept(move_visitor &) && = 0;
 
   protected:
     inline constexpr acceptor() noexcept { (detail::assert_implements_correct_acceptor<Derived>(), ...); }
-
-    ~acceptor() = default;
     acceptor(const acceptor &) = default;
     acceptor(acceptor &&) = default;
     acceptor &operator=(const acceptor &) = default;
@@ -456,7 +457,7 @@ inline constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms) {
 template <typename Result, typename Acceptor, typename... Arms,
     typename Visitor = detail::select_visitor_t<Acceptor &&>>
 inline Result match(Acceptor &&acceptor, Arms &&...arms) {
-    using overload_type = detail::overload<std::decay_t<Arms>...>;
+    using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
     using visited_types = typename Visitor::visited_types;
     detail::assert_overload_invocable<overload_type, visited_types>();
 
@@ -467,7 +468,7 @@ inline Result match(Acceptor &&acceptor, Arms &&...arms) {
 
 template <typename Acceptor, typename... Arms, typename Visitor = detail::select_visitor_t<Acceptor &&>>
 inline decltype(auto) match(Acceptor &&acceptor, Arms &&...arms) {
-    using overload_type = detail::overload<std::decay_t<Arms>...>;
+    using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
     using visited_types = typename Visitor::visited_types;
     detail::assert_overload_invocable<overload_type, visited_types>();
     detail::assert_invoke_results_compatible<overload_type, visited_types>();
