@@ -77,19 +77,15 @@ This is implemented through double dispatch using an ad-hoc visitor implementati
 This feature requires some light boilerplate to tell matchbox to implement the appropriate acceptor hierarchy:
 
 ```c++
-class base : public matchbox::acceptor<class first_derived, class second_derived> {
-    // ...
-};
-
-class first_derived : public matchbox::implement_acceptor<base, first_derived> {
-    // ...
-};
-
-class second_derived : public matchbox::implement_acceptor<base, second_derived> {
-    // ...
-};
-
-// ...
+class base
+    : public matchbox::acceptor<class first_derived, class second_derived>
+{};
+class first_derived
+    : public matchbox::implement_acceptor<base, first_derived>
+{};
+class second_derived
+    : public matchbox::implement_acceptor<base, second_derived>
+{};
 
 first_derived instance;
 const base &ref = instance;
@@ -108,9 +104,7 @@ If you are in a situation with a large number of derived classes and the base cl
 ```c++
 using derived_types = matchbox::type_list<class first_derived, class second_derived>;
 
-class base : public derived_types::acceptor {
-    // ...
-};
+class base : public derived_types::acceptor {};
 ```
 
 ## API Reference

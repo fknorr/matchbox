@@ -369,7 +369,7 @@ TEST_CASE("README intro") {
     CHECK(magnitude == 12);
 }
 
-TEST_CASE("README std::variant (1)") {
+TEST_CASE("README on std::variant (1)") {
     std::variant<std::string, std::vector<int>, int, float> var(42);
 
     const char *type_string = match(
@@ -380,7 +380,7 @@ TEST_CASE("README std::variant (1)") {
     CHECK(strcmp(type_string, "number") == 0);
 }
 
-TEST_CASE("README std::variant (2)") {
+TEST_CASE("README on std::variant (2)") {
     std::variant<int, float> num(4.20f);
     int left = 1;
     int right = 2;
@@ -392,7 +392,7 @@ TEST_CASE("README std::variant (2)") {
     CHECK(&var == &right);
 }
 
-TEST_CASE("README std::variant (3)") {
+TEST_CASE("README on std::variant (3)") {
     std::variant<std::string, std::vector<int>> heavy(std::string("lorem ipsum"));
 
     match(
@@ -401,7 +401,7 @@ TEST_CASE("README std::variant (3)") {
         [](std::vector<int> &&vec) { (void)std::move(vec); });
 }
 
-TEST_CASE("README std::optional") {
+TEST_CASE("README on std::optional") {
     std::optional<unsigned int> opt(123u);
 
     int next = match(
@@ -411,18 +411,10 @@ TEST_CASE("README std::optional") {
     CHECK(next == 124);
 }
 
-TEST_CASE("README on inheritance hierarchies") {
-    class base : public matchbox::acceptor<class first_derived, class second_derived> {
-        // ...
-    };
-
-    class first_derived : public matchbox::implement_acceptor<base, first_derived> {
-        // ...
-    };
-
-    class second_derived : public matchbox::implement_acceptor<base, second_derived> {
-        // ...
-    };
+TEST_CASE("README on inheritance hierarchies (1)") {
+    class base : public matchbox::acceptor<class first_derived, class second_derived> {};
+    class first_derived : public matchbox::implement_acceptor<base, first_derived> {};
+    class second_derived : public matchbox::implement_acceptor<base, second_derived> {};
 
     first_derived instance;
     const base &ref = instance;
@@ -436,8 +428,5 @@ TEST_CASE("README on inheritance hierarchies") {
 
 TEST_CASE("README on inheritance hierarchies (2)") {
     using derived_types = matchbox::type_list<class first_derived, class second_derived>;
-
-    class base : public derived_types::acceptor {
-        // ...
-    };
+    class base : public derived_types::acceptor {};
 }

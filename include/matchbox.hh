@@ -13,29 +13,29 @@
 namespace matchbox::detail {
 
 template <typename T>
-class declare_visit_fn {
+class declare_visit_function {
   public:
     virtual void visit(T) = 0;
 };
 
 template <typename Base, typename Fn, typename Ret, typename... Ts>
-class impl_visit_fn;
+class implement_visit_function;
 
 template <typename Base, typename Fn, typename Ret, typename T, typename... Ts>
-class impl_visit_fn<Base, Fn, Ret, T, Ts...> : public impl_visit_fn<Base, Fn, Ret, Ts...> {
+class implement_visit_function<Base, Fn, Ret, T, Ts...> : public implement_visit_function<Base, Fn, Ret, Ts...> {
   private:
-    using next = impl_visit_fn<Base, Fn, Ret, Ts...>;
+    using next = implement_visit_function<Base, Fn, Ret, Ts...>;
 
   public:
-    explicit impl_visit_fn(Fn &&fn) : next(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : next(std::move(fn)) {}
     void visit(T v) final { next::template invoke<T>(static_cast<T>(v)); }
     using next::visit;
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret> : public Base, private Fn {
+class implement_visit_function<Base, Fn, Ret> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     Ret get_result() { return std::move(*m_ret); }
 
   protected:
@@ -50,9 +50,9 @@ class impl_visit_fn<Base, Fn, Ret> : public Base, private Fn {
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret &> : public Base, private Fn {
+class implement_visit_function<Base, Fn, Ret &> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     Ret &get_result() { return *m_ret; }
 
   protected:
@@ -67,9 +67,9 @@ class impl_visit_fn<Base, Fn, Ret &> : public Base, private Fn {
 };
 
 template <typename Base, typename Fn, typename Ret>
-class impl_visit_fn<Base, Fn, Ret &&> : public Base, private Fn {
+class implement_visit_function<Base, Fn, Ret &&> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     Ret &&get_result() { return std::move(*m_ret); }
 
   protected:
@@ -85,9 +85,9 @@ class impl_visit_fn<Base, Fn, Ret &&> : public Base, private Fn {
 };
 
 template <typename Base, typename Fn>
-class impl_visit_fn<Base, Fn, void> : public Base, private Fn {
+class implement_visit_function<Base, Fn, void> : public Base, private Fn {
   public:
-    explicit impl_visit_fn(Fn &&fn) : Fn(std::move(fn)) {}
+    explicit implement_visit_function(Fn &&fn) : Fn(std::move(fn)) {}
     void get_result() {}
 
   protected:
@@ -135,13 +135,13 @@ struct type_list {
 };
 
 template <typename... Ts>
-class visitor : private detail::declare_visit_fn<Ts>... {
+class visitor : private detail::declare_visit_function<Ts>... {
   public:
     using visited_types = type_list<Ts...>;
 
     virtual ~visitor() = default;
 
-    using detail::declare_visit_fn<Ts>::visit...;
+    using detail::declare_visit_function<Ts>::visit...;
 
   protected:
     visitor() = default;
@@ -379,9 +379,9 @@ class visitor_impl;
 
 template <typename Result, typename... Ts, typename Fn>
 class visitor_impl<Result, matchbox::visitor<Ts...>, Fn>
-    : public impl_visit_fn<matchbox::visitor<Ts...>, Fn, Result, Ts...> {
+    : public implement_visit_function<matchbox::visitor<Ts...>, Fn, Result, Ts...> {
   public:
-    using impl_visit_fn<matchbox::visitor<Ts...>, Fn, Result, Ts...>::impl_visit_fn;
+    using implement_visit_function<matchbox::visitor<Ts...>, Fn, Result, Ts...>::implement_visit_function;
 };
 
 template <typename AcceptorCVRef, typename Enable = void>
