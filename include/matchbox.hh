@@ -42,7 +42,7 @@ class impl_visit_fn<Base, Fn, Ret> : public Base, private Fn {
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret>);
-        m_ret.emplace(static_cast<Ret>(static_cast<Fn&>(*this)(static_cast<T>(v))));
+        m_ret.emplace(static_cast<Ret>(static_cast<Fn &>(*this)(static_cast<T>(v))));
     }
 
   private:
@@ -59,7 +59,7 @@ class impl_visit_fn<Base, Fn, Ret &> : public Base, private Fn {
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &>);
-        m_ret = &static_cast<Ret &>(static_cast<Fn&>(*this)(static_cast<T>(v)));
+        m_ret = &static_cast<Ret &>(static_cast<Fn &>(*this)(static_cast<T>(v)));
     }
 
   private:
@@ -76,7 +76,7 @@ class impl_visit_fn<Base, Fn, Ret &&> : public Base, private Fn {
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &&>);
-        Ret &&name = static_cast<Ret &&>(static_cast<Fn&>(*this)(static_cast<T>(v)));
+        Ret &&name = static_cast<Ret &&>(static_cast<Fn &>(*this)(static_cast<T>(v)));
         m_ret = &name;
     }
 
@@ -94,12 +94,9 @@ class impl_visit_fn<Base, Fn, void> : public Base, private Fn {
     template <typename T>
     inline void invoke(T v) {
         static_assert(std::is_void_v<std::invoke_result_t<Fn, T>>);
-        static_cast<Fn&>(*this)(static_cast<T>(v));
+        static_cast<Fn &>(*this)(static_cast<T>(v));
     }
 };
-
-template <typename... Ts>
-struct polymorphic_visitor_tag {};
 
 template <typename...>
 inline constexpr bool constexpr_false = false;
@@ -122,9 +119,12 @@ struct assert_implements_correct_acceptor<Derived, std::void_t<int[sizeof(Derive
 namespace matchbox {
 
 template <typename... Ts>
+struct type_list;
+
+template <typename... Ts>
 class visitor : public detail::declare_visit_fn<Ts>... {
   public:
-    using polymorphic_visitor_tag = detail::polymorphic_visitor_tag<Ts...>;
+    using visited_types = type_list<Ts...>;
 
     visitor() = default;
     visitor(const visitor &) = default;
@@ -286,8 +286,8 @@ struct assert_overload_invocable<F, OptionalCVRef, std::optional<T>,
     std::enable_if_t<is_overload_invocable_on_optional_v<F, OptionalCVRef>>> {};
 
 template <typename F, typename TagCVRef, typename... Ts>
-struct assert_overload_invocable<F, TagCVRef, polymorphic_visitor_tag<Ts...>,
-    std::enable_if_t<(std::is_invocable_v<F, Ts> && ...)>> {};
+struct assert_overload_invocable<F, TagCVRef, type_list<Ts...>, std::enable_if_t<(std::is_invocable_v<F, Ts> && ...)>> {
+};
 
 template <typename... Ts>
 struct common_cvref_type {
@@ -343,7 +343,7 @@ template <typename F, typename OptionalCVRef, typename T>
 struct common_invoke_result<F, OptionalCVRef, std::optional<T>> : common_optional_invoke_result<F, OptionalCVRef> {};
 
 template <typename F, typename TagCVRef, typename... Ts>
-struct common_invoke_result<F, TagCVRef, polymorphic_visitor_tag<Ts...>> {
+struct common_invoke_result<F, TagCVRef, type_list<Ts...>> {
     using type = common_cvref_type_t<std::invoke_result_t<F, Ts>...>;
 };
 
@@ -360,14 +360,6 @@ struct assert_invoke_results_compatible {
 template <typename F, typename AltListCVRef>
 struct assert_invoke_results_compatible<F, AltListCVRef, std::void_t<common_invoke_result_t<F, AltListCVRef>>> {};
 
-template <typename CVRef, typename Enable = void>
-inline constexpr bool is_polymorphic_visitor_v = false;
-
-template <typename CVRef>
-inline constexpr bool
-    is_polymorphic_visitor_v<CVRef, std::void_t<typename detail::remove_cvref_t<CVRef>::polymorphic_visitor_tag>>
-    = true;
-
 template <typename Result, typename Visitor, typename Fn>
 class visitor_impl;
 
@@ -377,14 +369,6 @@ class visitor_impl<Result, matchbox::visitor<Ts...>, Fn>
   public:
     using impl_visit_fn<matchbox::visitor<Ts...>, Fn, Result, Ts...>::impl_visit_fn;
 };
-
-template <typename T, typename Visitor, typename Enable = void>
-inline constexpr bool accepts_visitor_v = false;
-
-template <typename T, typename Visitor>
-inline constexpr bool
-    accepts_visitor_v<T, Visitor, std::void_t<decltype(std::declval<T>().accept(std::declval<Visitor &>()))>>
-    = true;
 
 template <typename AcceptorCVRef, typename Enable = void>
 struct select_visitor;
@@ -460,8 +444,8 @@ template <typename Result, typename Acceptor, typename... Arms,
     typename Visitor = detail::select_visitor_t<Acceptor &&>>
 inline Result match(Acceptor &&acceptor, Arms &&...arms) {
     using overload_type = detail::overload<std::decay_t<Arms>...>;
-    using visitor_tag = typename Visitor::polymorphic_visitor_tag;
-    detail::assert_overload_invocable<overload_type, visitor_tag>();
+    using visited_types = typename Visitor::visited_types;
+    detail::assert_overload_invocable<overload_type, visited_types>();
 
     detail::visitor_impl<Result, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
     std::forward<Acceptor>(acceptor).accept(vis);
@@ -471,11 +455,11 @@ inline Result match(Acceptor &&acceptor, Arms &&...arms) {
 template <typename Acceptor, typename... Arms, typename Visitor = detail::select_visitor_t<Acceptor &&>>
 inline decltype(auto) match(Acceptor &&acceptor, Arms &&...arms) {
     using overload_type = detail::overload<std::decay_t<Arms>...>;
-    using visitor_tag = typename Visitor::polymorphic_visitor_tag;
-    detail::assert_overload_invocable<overload_type, visitor_tag>();
-    detail::assert_invoke_results_compatible<overload_type, visitor_tag>();
+    using visited_types = typename Visitor::visited_types;
+    detail::assert_overload_invocable<overload_type, visited_types>();
+    detail::assert_invoke_results_compatible<overload_type, visited_types>();
 
-    using result_type = detail::common_invoke_result_t<overload_type, visitor_tag>;
+    using result_type = detail::common_invoke_result_t<overload_type, visited_types>;
     detail::visitor_impl<result_type, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
     std::forward<Acceptor>(acceptor).accept(vis);
     return vis.get_result();
