@@ -78,14 +78,11 @@ This feature requires some light boilerplate to tell matchbox to implement the a
 
 ```c++
 class base
-    : public matchbox::acceptor<class first_derived, class second_derived>
-{};
+    : public matchbox::acceptor<class first_derived, class second_derived> {};
 class first_derived
-    : public matchbox::implement_acceptor<base, first_derived>
-{};
+    : public matchbox::implement_acceptor<base, first_derived> {};
 class second_derived
-    : public matchbox::implement_acceptor<base, second_derived>
-{};
+    : public matchbox::implement_acceptor<base, second_derived> {};
 
 first_derived instance;
 const base &ref = instance;
