@@ -119,7 +119,20 @@ struct assert_implements_correct_acceptor<Derived, std::void_t<int[sizeof(Derive
 namespace matchbox {
 
 template <typename... Ts>
-struct type_list;
+class visitor;
+
+template <typename... Derived>
+class acceptor;
+
+template <typename... Ts>
+struct type_list {
+    using acceptor = matchbox::acceptor<Ts...>;
+    using visitor = matchbox::visitor<Ts &...>;
+    using const_visitor = matchbox::visitor<const Ts &...>;
+    using move_visitor = matchbox::visitor<Ts &&...>;
+
+    ~type_list() = delete;
+};
 
 template <typename... Ts>
 class visitor : public detail::declare_visit_fn<Ts>... {
@@ -140,9 +153,9 @@ class visitor : public detail::declare_visit_fn<Ts>... {
 template <typename... Derived>
 class acceptor {
   public:
-    using visitor = matchbox::visitor<Derived &...>;
-    using const_visitor = matchbox::visitor<const Derived &...>;
-    using move_visitor = matchbox::visitor<Derived &&...>;
+    using visitor = typename type_list<Derived...>::visitor;
+    using const_visitor = typename type_list<Derived...>::const_visitor;
+    using move_visitor = typename type_list<Derived...>::move_visitor;
 
     virtual void accept(visitor &) & = 0;
     virtual void accept(const_visitor &) const & = 0;
