@@ -1,6 +1,6 @@
-# matchbox – A `match` Statement for C++
+# matchbox – A `match` Expression for C++
 
-C++'s sum type `std::variant` lacks the ergonomics of Rust's `match` statement for enum types – but it doesn't have to be this way!
+C++'s sum types `std::variant` lacks the ergonomics of Rust's `match` expression for enum types – but it doesn't have to be this way!
 
 ```c++
 #include <matchbox.hh>
@@ -71,10 +71,9 @@ int next = match(opt,
 
 ## `match` on inheritance hierarchies
 
-matchbox also allows you to enter a `match` statement based on dynamic class type.
-This is implemented through double dispatch using an ad-hoc visitor implementation, which means it's reasonably fast (two virtual function calls, no `dynamic_cast` or other RTTI involved).
-
-This feature requires some light boilerplate to tell matchbox to implement the appropriate acceptor hierarchy:
+matchbox also allows you to match `match` on the dynamic type of a base-class reference.
+This is implemented efficiently through double dispatch using an ad-hoc visitor implementation (no `dynamic_cast` or other RTTI involved).
+The feature requires some light boilerplate to tell matchbox to implement the appropriate acceptor hierarchy:
 
 ```c++
 class base
@@ -146,11 +145,16 @@ inline decltype(auto) match(AcceptorCVRef &&acceptor, Arms &&...arms);
 
 ### Visitor Pattern
 
-You're free to implement your own visitor types on top of `matchbox::visitor` if a `match` statement does not fit your particular needs.
+Matching on inheritance hierarchies is realized by instantiating an ad-hoc visitor type as part of `match` expression, which is accepted by user types that implement the accompanying `acceptor` interface.
+The acceptor can be implemented on each derived type by inheriting through the CRTP base class `matchbox::implement_acceptor`.
+
+There are however cases when implementing a custom visitor class can be more readable than a match statement, for example if the code for each match the number of cases to be distinguished is large.
 
 ```c++
 namespace matchbox {
 
+// You can a type_list to specify the list of visited types ahead of the acceptor class
+// if that improves readability.
 template <typename... Ts>
 struct type_list {
     using acceptor = matchbox::acceptor<Ts...>;
@@ -158,9 +162,14 @@ struct type_list {
     using const_visitor = matchbox::visitor<const Ts &...>;
     using move_visitor = matchbox::visitor<Ts &&...>;
 
+    template <typename T>
+    static constexpr bool contains_v = (std::is_same_v<T, Ts> || ...);
+
     ~type_list() = delete;
 };
 
+// Visitor base class that is implemented automatically by `match`, or can be implemented
+// manually to accept a list of types.
 template <typename... Ts>
 class visitor {
   public:
@@ -168,9 +177,12 @@ class visitor {
 
     virtual ~visitor() = default;
 
+    // Exposition only
     (virtual void visit(Ts) = 0)...;
 };
 
+// Interface for types that can be visited by a `visitor`. Base types of your visitable
+// hierarchies should derive from this.
 template <typename... Derived>
 class acceptor {
   public:
@@ -180,11 +192,16 @@ class acceptor {
 
     virtual ~acceptor() = default;
 
+    // There are three overloads of `accept` to forward the correct reference type
+    // (T&, const T&, or T&&) to the visitor.
     virtual void accept(visitor &) & = 0;
     virtual void accept(const_visitor &) const & = 0;
     virtual void accept(move_visitor &) && = 0;
 };
 
+// CRTP base class that implements `acceptor` for a derived type.
+// Use as `class my_type : public implement_acceptor<my_base, my_type> {};`, where
+// `my_base` itself inherits from `acceptor`
 template <typename Base, typename Derived>
 class implement_acceptor : public Base {
   public:
@@ -192,9 +209,9 @@ class implement_acceptor : public Base {
     using typename Base::move_visitor;
     using typename Base::visitor;
 
-    void accept(visitor &v) & override;
-    void accept(const_visitor &v) const & override;
-    void accept(move_visitor &v) && override;
+    void accept(visitor &v) & override { v.visit((Derived&) *this); }
+    void accept(const_visitor &v) const & override { v.visit((const Derived&) *this); }
+    void accept(move_visitor &v) && override { v.visit((Derived &&) *this); }
 };
 
 }

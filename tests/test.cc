@@ -131,6 +131,12 @@ TEST_CASE("match on std::variant") {
         [](auto v) { return v; });
     static_assert(std::is_same_v<decltype(ret_l), double>);
     CHECK(ret_l == 1.0);
+
+    // can return void
+
+    // need to wrap this into a named function because lambdas are not allowed inside decltype()
+    constexpr auto returns_void = [](variant3 &v) { return match(v, [&](const auto &) {}); };
+    static_assert(std::is_void_v<decltype(returns_void(var_2))>);
 }
 
 TEST_CASE("match on std::optional") {
@@ -247,6 +253,12 @@ TEST_CASE("match on std::optional") {
         [](auto v) -> std::optional<int> { return v; });
     static_assert(std::is_same_v<decltype(ret_l), std::optional<int>>);
     CHECK(ret_l == std::optional<int>(99));
+
+    // can return void
+
+    // need to wrap this into a named function because lambdas are not allowed inside decltype()
+    constexpr auto returns_void = [](std::optional<float> &o) { return match(o, [&](const auto &) {}); };
+    static_assert(std::is_void_v<decltype(returns_void(opt_null))>);
 }
 
 TEST_CASE("match on polymorphic acceptors") {
@@ -259,21 +271,21 @@ TEST_CASE("match on polymorphic acceptors") {
     base &ref = instance;
 
     const auto ret = match(
-        instance,                      //
+        ref,                           //
         [](derived_a &) { return 0; }, //
         [](derived_b &) { return 1; }, //
         [](derived_c &) { return 2; });
     CHECK(ret == 1);
 
     const auto ret2 = match(
-        std::as_const(instance),             //
+        std::as_const(ref),                  //
         [](const derived_a &) { return 0; }, //
         [](const derived_b &) { return 1; }, //
         [](const derived_c &) { return 2; });
     CHECK(ret2 == 1);
 
     const auto ret3 = match(
-        std::move(instance),            //
+        std::move(ref),                 //
         [](derived_a &&) { return 0; }, //
         [](derived_b &&) { return 1; }, //
         [](derived_c &&) { return 2; });
@@ -283,9 +295,9 @@ TEST_CASE("match on polymorphic acceptors") {
 
     static_assert(std::is_same_v<detail::select_visitor_t<const base &&>, detail::select_visitor_t<const base &>>);
     const auto ret4 = match(
-        static_cast<const base &&>(instance), //
-        [](const derived_a &) { return 0; },  //
-        [](const derived_b &) { return 1; },  //
+        static_cast<const base &&>(ref),     //
+        [](const derived_a &) { return 0; }, //
+        [](const derived_b &) { return 1; }, //
         [](const derived_c &) { return 2; });
     CHECK(ret4 == 1);
 
@@ -316,7 +328,7 @@ TEST_CASE("match on polymorphic acceptors") {
     int int_3 = 3;
 
     decltype(auto) ret8 = match(
-        instance,                                    //
+        ref,                                         //
         [&](derived_a &) -> int & { return int_1; }, //
         [&](derived_b &) -> int & { return int_2; }, //
         [&](derived_c &) -> int & { return int_3; });
@@ -324,7 +336,7 @@ TEST_CASE("match on polymorphic acceptors") {
     CHECK(&ret8 == &int_2);
 
     decltype(auto) ret9 = match(
-        instance,                                          //
+        ref,                                               //
         [&](derived_a &) -> const int & { return int_1; }, //
         [&](derived_b &) -> const int & { return int_2; }, //
         [&](derived_c &) -> const int & { return int_3; });
@@ -332,12 +344,18 @@ TEST_CASE("match on polymorphic acceptors") {
     CHECK(&ret9 == &int_2);
 
     decltype(auto) ret10 = match(
-        instance,                                                //
+        ref,                                                     //
         [&](derived_a &) -> int && { return std::move(int_1); }, //
         [&](derived_b &) -> int && { return std::move(int_2); }, //
         [&](derived_c &) -> int && { return std::move(int_3); });
     static_assert(std::is_same_v<decltype(ret10), int &&>);
     CHECK(&ret10 == &int_2);
+
+    // can return void
+
+    // need to wrap this into a named function because lambdas are not allowed inside decltype()
+    constexpr auto returns_void = [](base &ref) { return match(ref, [&](auto &) {}); };
+    static_assert(std::is_void_v<decltype(returns_void(ref))>);
 }
 
 TEST_CASE("incorrect inheritance from implement_acceptor is detected at runtime") {

@@ -1,13 +1,12 @@
 #pragma once
 
-#include <functional>
 #include <optional>
 #include <type_traits>
 #include <variant>
 
-#if !defined(MATCHBOX_ASSERT) && !defined(NDEBUG)
+#ifndef MATCHBOX_ASSERT
 #include <cassert>
-#define MATCHBOX_ASSERT(x, msg) assert(x &&msg)
+#define MATCHBOX_ASSERT(x, msg) assert((x) && msg)
 #endif
 
 namespace matchbox::detail {
@@ -131,6 +130,9 @@ struct type_list {
     using const_visitor = matchbox::visitor<const Ts &...>;
     using move_visitor = matchbox::visitor<Ts &&...>;
 
+    template <typename T>
+    inline static constexpr bool contains_v = (std::is_same_v<T, Ts> || ...);
+
     ~type_list() = delete;
 };
 
@@ -154,9 +156,10 @@ class visitor : private detail::declare_visit_function<Ts>... {
 template <typename... Derived>
 class acceptor {
   public:
-    using visitor = typename type_list<Derived...>::visitor;
-    using const_visitor = typename type_list<Derived...>::const_visitor;
-    using move_visitor = typename type_list<Derived...>::move_visitor;
+    using implementors = type_list<Derived...>;
+    using visitor = typename implementors::visitor;
+    using const_visitor = typename implementors::const_visitor;
+    using move_visitor = typename implementors::move_visitor;
 
     virtual ~acceptor() = default;
 
@@ -175,6 +178,10 @@ class acceptor {
 template <typename Base, typename Derived>
 class implement_acceptor : public Base {
   public:
+    static_assert(Base::implementors::template contains_v<Derived>,
+        "Derived type is not listed in the template arguments of the matchbox::acceptor<> base, this implementation "
+        "will never receive a visitor");
+
     using typename Base::const_visitor;
     using typename Base::move_visitor;
     using typename Base::visitor;
@@ -195,7 +202,8 @@ class implement_acceptor : public Base {
     }
 
   protected:
-    inline constexpr implement_acceptor() noexcept { //
+    inline constexpr implement_acceptor() noexcept {
+        // `Derived` is not a complete type at the point of this class definition, assert here
         static_assert(std::is_base_of_v<implement_acceptor, Derived>);
     }
 
@@ -211,7 +219,10 @@ class implement_acceptor : public Base {
 
     using implements_acceptor_for = Derived;
 
-    void assert_dynamic_type_is_derived_type() const {
+    inline void assert_dynamic_type_is_derived_type() const {
+        // We try to catch this statically in acceptor::acceptor, but the static check only applies if the derived type
+        // is defined (i.e. complete) at the point where its constructor is initiated. As a second line of defense we
+        // assert that the dynamic type is correct inside accept(), and thus our static_cast<Derived> is legal.
         MATCHBOX_ASSERT(dynamic_cast<const Derived *>(this) == static_cast<const Derived *>(this),
             "Derived type does not inherit from implement_acceptor<Base, Derived>");
     }
@@ -263,7 +274,6 @@ inline constexpr bool is_optional_v = is_optional_type_v<detail::remove_cvref_t<
 template <typename Ret, typename F, typename OptionalCVRef>
 constexpr Ret visit_optional_r(F &&f, OptionalCVRef &&optional) {
     // std::optional::operator*() forwards the cvref-qualification of the object.
-    // TODO use std::invoke here when it becomes constexpr with C++20.
     return optional.has_value() ? std::forward<F>(f)(*std::forward<OptionalCVRef>(optional))
                                 : std::forward<F>(f)(std::nullopt);
 }
