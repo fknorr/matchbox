@@ -270,8 +270,8 @@ inline constexpr bool is_optional_type_v<std::optional<T>> = true;
 template <typename CVRef>
 inline constexpr bool is_optional_v = is_optional_type_v<detail::remove_cvref_t<CVRef>>;
 
-template <typename Ret, typename F, typename OptionalCVRef>
-constexpr Ret visit_optional_r(F &&f, OptionalCVRef &&optional) {
+template <typename F, typename OptionalCVRef>
+constexpr decltype(auto) visit_optional(F &&f, OptionalCVRef &&optional) {
     // std::optional::operator*() forwards the cvref-qualification of the object.
     return optional.has_value() ? std::forward<F>(f)(*std::forward<OptionalCVRef>(optional))
                                 : std::forward<F>(f)(std::nullopt);
@@ -475,7 +475,7 @@ inline constexpr Result match(OptionalCVRef &&o, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
     // `if constexpr`: suppress follow-up compiler errors if static assertion fails
     if constexpr(detail::assert_is_overload_invocable<overload_type, OptionalCVRef &&>()) {
-        return detail::visit_optional_r<Result>(
+        return detail::visit_optional(
             detail::convert_result<Result, overload_type>(overload_type(std::forward<Arms>(arms)...)),
             std::forward<OptionalCVRef>(o));
     }
@@ -489,7 +489,7 @@ inline constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms) {
     if constexpr(detail::assert_is_overload_invocable<overload_type, OptionalCVRef &&>()
         && detail::assert_has_common_invoke_result<overload_type, OptionalCVRef &&>()) {
         using result_type = detail::common_invoke_result_t<overload_type, OptionalCVRef &&>;
-        return detail::visit_optional_r<result_type>(
+        return detail::visit_optional(
             detail::convert_result<result_type, overload_type>(overload_type(std::forward<Arms>(arms)...)),
             std::forward<OptionalCVRef>(o));
     }

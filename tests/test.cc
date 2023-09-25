@@ -254,6 +254,13 @@ TEST_CASE("match on std::optional") {
     static_assert(std::is_same_v<decltype(ret_l), std::optional<int>>);
     CHECK(ret_l == std::optional<int>(99));
 
+    // explicit return types work
+
+    auto ret_m = match<std::optional<float>>(
+        std::optional<int>(99),          //
+        [](int i) { return (double)i; }, //
+        [](std::nullopt_t) { return std::nullopt; });
+
     // can return void
 
     // need to wrap this into a named function because lambdas are not allowed inside decltype()
