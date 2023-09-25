@@ -209,6 +209,10 @@ class implement_acceptor : public Base {
     using typename Base::move_visitor;
     using typename Base::visitor;
 
+    // Use `my_type(arg): acceptor_base(arg) {}` to call the base class constructor
+    using acceptor_base = implement_acceptor;
+    using Base::Base;
+
     void accept(visitor &v) & override { v.visit((Derived&) *this); }
     void accept(const_visitor &v) const & override { v.visit((const Derived&) *this); }
     void accept(move_visitor &v) && override { v.visit((Derived &&) *this); }

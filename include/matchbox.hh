@@ -202,16 +202,9 @@ class implement_acceptor : public Base {
     }
 
   protected:
-    inline constexpr implement_acceptor() noexcept {
-        // `Derived` is not a complete type at the point of this class definition, assert here
-        static_assert(std::is_base_of_v<implement_acceptor, Derived>);
-    }
+    using acceptor_base = implement_acceptor;
 
-    ~implement_acceptor() = default;
-    implement_acceptor(const implement_acceptor &) = default;
-    implement_acceptor(implement_acceptor &&) = default;
-    implement_acceptor &operator=(const implement_acceptor &) = default;
-    implement_acceptor &operator=(implement_acceptor &&) = default;
+    using Base::Base;
 
   private:
     template <typename, typename>
@@ -220,6 +213,9 @@ class implement_acceptor : public Base {
     using implements_acceptor_for = Derived;
 
     inline void assert_dynamic_type_is_derived_type() const {
+        // `Derived` is not a complete type at the point of the class definition, assert here
+        static_assert(std::is_base_of_v<implement_acceptor, Derived>);
+
         // We try to catch this statically in acceptor::acceptor, but the static check only applies if the derived type
         // is defined (i.e. complete) at the point where its constructor is initiated. As a second line of defense we
         // assert that the dynamic type is correct inside accept(), and thus our static_cast<Derived> is legal.
