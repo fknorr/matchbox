@@ -17,6 +17,9 @@ class declare_visit_function {
     virtual void visit(T) = 0;
 };
 
+template <typename F, typename Param>
+using invoke_result_t = decltype(std::declval<F>()(std::declval<Param>()));
+
 template <typename Base, typename Fn, typename Ret, typename... Ts>
 class implement_visit_function;
 
@@ -40,7 +43,7 @@ class implement_visit_function<Base, Fn, Ret> : public Base, private Fn {
   protected:
     template <typename T>
     inline void invoke(T v) {
-        static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret>);
+        static_assert(std::is_convertible_v<invoke_result_t<Fn, T>, Ret>);
         m_ret.emplace(static_cast<Ret>(static_cast<Fn &>(*this)(static_cast<T>(v))));
     }
 
@@ -57,7 +60,7 @@ class implement_visit_function<Base, Fn, Ret &> : public Base, private Fn {
   protected:
     template <typename T>
     inline void invoke(T v) {
-        static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &>);
+        static_assert(std::is_convertible_v<invoke_result_t<Fn, T>, Ret &>);
         m_ret = &static_cast<Ret &>(static_cast<Fn &>(*this)(static_cast<T>(v)));
     }
 
@@ -74,7 +77,7 @@ class implement_visit_function<Base, Fn, Ret &&> : public Base, private Fn {
   protected:
     template <typename T>
     inline void invoke(T v) {
-        static_assert(std::is_convertible_v<std::invoke_result_t<Fn, T>, Ret &&>);
+        static_assert(std::is_convertible_v<invoke_result_t<Fn, T>, Ret &&>);
         Ret &&name = static_cast<Ret &&>(static_cast<Fn &>(*this)(static_cast<T>(v)));
         m_ret = &name;
     }
@@ -92,13 +95,13 @@ class implement_visit_function<Base, Fn, void> : public Base, private Fn {
   protected:
     template <typename T>
     inline void invoke(T v) {
-        static_assert(std::is_void_v<std::invoke_result_t<Fn, T>>);
+        static_assert(std::is_void_v<invoke_result_t<Fn, T>>);
         static_cast<Fn &>(*this)(static_cast<T>(v));
     }
 };
 
 template <typename...>
-inline constexpr bool constexpr_false = false;
+inline constexpr bool no = false;
 
 template <typename T>
 using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
@@ -291,94 +294,123 @@ inline constexpr bool is_overload_invocable_on_optional_v
 
 template <typename F, typename AltListCVRef, typename AltList = detail::remove_cvref_t<AltListCVRef>,
     typename Enable = void>
-struct assert_overload_invocable {
-    static_assert(constexpr_false<Enable>,
-        "match arms do not cover all alternatives of the argument variant, or their parameters have incorrect cvref "
-        "qualification");
-};
+inline constexpr bool is_overload_invocable_v = false;
 
 template <typename F, typename VariantCVRef, typename... Ts>
-struct assert_overload_invocable<F, VariantCVRef, std::variant<Ts...>,
-    std::enable_if_t<is_overload_invocable_on_variant_v<F, VariantCVRef>>> {};
+inline constexpr bool is_overload_invocable_v<F, VariantCVRef, std::variant<Ts...>,
+    std::enable_if_t<is_overload_invocable_on_variant_v<F, VariantCVRef>>>
+    = true;
 
 template <typename F, typename OptionalCVRef, typename T>
-struct assert_overload_invocable<F, OptionalCVRef, std::optional<T>,
-    std::enable_if_t<is_overload_invocable_on_optional_v<F, OptionalCVRef>>> {};
+inline constexpr bool is_overload_invocable_v<F, OptionalCVRef, std::optional<T>,
+    std::enable_if_t<is_overload_invocable_on_optional_v<F, OptionalCVRef>>>
+    = true;
 
 template <typename F, typename TagCVRef, typename... Ts>
-struct assert_overload_invocable<F, TagCVRef, type_list<Ts...>, std::enable_if_t<(std::is_invocable_v<F, Ts> && ...)>> {
+inline constexpr bool
+    is_overload_invocable_v<F, TagCVRef, type_list<Ts...>, std::enable_if_t<(std::is_invocable_v<F, Ts> && ...)>>
+    = true;
+
+template <typename F, typename AltListCVRef>
+struct assert_is_overload_invocable {
+    constexpr static bool ok = is_overload_invocable_v<F, AltListCVRef>;
+    static_assert(ok,
+        "match arms do not cover all alternatives of the argument variant, or their parameters have incorrect cvref "
+        "qualification");
+    constexpr explicit operator bool() const { return ok; }
 };
 
+template <typename Enable, typename... Ts>
+struct common_cvref_type_impl {};
+
 template <typename... Ts>
-struct common_cvref_type {
+struct common_cvref_type_impl<std::void_t<std::common_type_t<Ts...>>, Ts...> {
     // once we have lifted all cvref qualifiers, we apply std::common_type_t - this will std::decay some of the results
     // if they differ in qualification
     using type = std::common_type_t<Ts...>;
 };
 
 template <typename... Ts>
-struct common_cvref_type<const Ts...> {
-    using type = const typename common_cvref_type<Ts...>::type;
+struct common_cvref_type_impl<void, const Ts...> {
+    using type = const typename common_cvref_type_impl<void, Ts...>::type;
 };
 
 template <typename... Ts>
-struct common_cvref_type<volatile Ts...> {
-    using type = volatile typename common_cvref_type<Ts...>::type;
+struct common_cvref_type_impl<void, volatile Ts...> {
+    using type = volatile typename common_cvref_type_impl<void, Ts...>::type;
 };
 template <typename... Ts>
-struct common_cvref_type<Ts &...> {
-    using type = typename common_cvref_type<Ts...>::type &;
-};
-
-template <typename... Ts>
-struct common_cvref_type<Ts &&...> {
-    using type = typename common_cvref_type<Ts...>::type &&;
+struct common_cvref_type_impl<void, Ts &...> {
+    using type = typename common_cvref_type_impl<void, Ts...>::type &;
 };
 
 template <typename... Ts>
-using common_cvref_type_t = typename common_cvref_type<Ts...>::type;
+struct common_cvref_type_impl<void, Ts &&...> {
+    using type = typename common_cvref_type_impl<void, Ts...>::type &&;
+};
+
+template <typename... Ts>
+using common_cvref_type = common_cvref_type_impl<void, Ts...>;
+
+template <typename F, typename... AltParams>
+using common_cvref_invoke_result = common_cvref_type<decltype(std::declval<F>()(std::declval<AltParams>()))...>;
+
+template <typename F, typename... AltParams>
+using common_cvref_invoke_result_t = typename common_cvref_invoke_result<F, AltParams...>::type;
 
 template <typename F, typename VariantCVRef,
-    typename IndexList = std::make_index_sequence<std::variant_size_v<detail::remove_cvref_t<VariantCVRef>>>>
-struct common_variant_invoke_result;
+    typename IndexList = std::make_index_sequence<std::variant_size_v<detail::remove_cvref_t<VariantCVRef>>>,
+    typename Enable = void>
+struct common_variant_invoke_result {};
 
 template <typename F, typename VariantCVRef, size_t... Indices>
-struct common_variant_invoke_result<F, VariantCVRef, std::index_sequence<Indices...>> {
-    using type
-        = common_cvref_type_t<std::invoke_result_t<F, decltype(std::get<Indices>(std::declval<VariantCVRef>()))>...>;
+struct common_variant_invoke_result<F, VariantCVRef, std::index_sequence<Indices...>,
+    std::void_t<common_cvref_invoke_result_t<F, decltype(std::get<Indices>(std::declval<VariantCVRef>()))...>>> {
+    using type = common_cvref_invoke_result_t<F, decltype(std::get<Indices>(std::declval<VariantCVRef>()))...>;
 };
 
+template <typename F, typename VariantCVRef>
+using common_variant_invoke_result_t = typename common_variant_invoke_result<F, VariantCVRef>::type;
+
 template <typename F, typename OptionalCVRef>
-using common_optional_invoke_result = common_cvref_type<std::invoke_result_t<F, optional_cvref_value_t<OptionalCVRef>>,
-    std::invoke_result_t<F, std::nullopt_t>>;
+using common_optional_invoke_result
+    = common_cvref_invoke_result<F, optional_cvref_value_t<OptionalCVRef>, std::nullopt_t>;
+
+template <typename F, typename OptionalCVRef>
+using common_optional_invoke_result_t = typename common_optional_invoke_result<F, OptionalCVRef>::type;
 
 template <typename F, typename AltListCVRef, typename AltList = detail::remove_cvref_t<AltListCVRef>,
     typename Enable = void>
 struct common_invoke_result;
 
 template <typename F, typename AltListCVRef, typename... Ts>
-struct common_invoke_result<F, AltListCVRef, std::variant<Ts...>> : common_variant_invoke_result<F, AltListCVRef> {};
+struct common_invoke_result<F, AltListCVRef, std::variant<Ts...>,
+    std::void_t<common_variant_invoke_result_t<F, AltListCVRef>>> : common_variant_invoke_result<F, AltListCVRef> {};
 
 template <typename F, typename OptionalCVRef, typename T>
-struct common_invoke_result<F, OptionalCVRef, std::optional<T>> : common_optional_invoke_result<F, OptionalCVRef> {};
+struct common_invoke_result<F, OptionalCVRef, std::optional<T>,
+    std::void_t<common_optional_invoke_result_t<F, OptionalCVRef>>> : common_optional_invoke_result<F, OptionalCVRef> {
+};
 
 template <typename F, typename TagCVRef, typename... Ts>
-struct common_invoke_result<F, TagCVRef, type_list<Ts...>> {
-    using type = common_cvref_type_t<std::invoke_result_t<F, Ts>...>;
-};
+struct common_invoke_result<F, TagCVRef, type_list<Ts...>, std::void_t<common_cvref_invoke_result_t<F, Ts...>>>
+    : common_cvref_invoke_result<F, Ts...> {};
 
 template <typename F, typename AltListCVRef>
 using common_invoke_result_t = typename common_invoke_result<F, AltListCVRef>::type;
 
 template <typename F, typename AltListCVRef, typename Enable = void>
-struct assert_invoke_results_compatible {
-    static_assert(detail::constexpr_false<Enable>,
-        "results of match arms cannot be implicitly converted to a common type, use matchbox::match<Result>() to "
-        "specify an explicit return type");
+struct assert_has_common_invoke_result {
+    static_assert(detail::no<Enable>,
+        "Results of match arms cannot be implicitly converted to a common (cvref-preserving) type, use "
+        "matchbox::match<Result>() to specify an explicit return type");
+    constexpr explicit operator bool() const { return false; }
 };
 
 template <typename F, typename AltListCVRef>
-struct assert_invoke_results_compatible<F, AltListCVRef, std::void_t<common_invoke_result_t<F, AltListCVRef>>> {};
+struct assert_has_common_invoke_result<F, AltListCVRef, std::void_t<common_invoke_result_t<F, AltListCVRef>>> {
+    constexpr explicit operator bool() const { return true; }
+};
 
 template <typename Result, typename Visitor, typename Fn>
 class visitor_impl;
@@ -391,7 +423,7 @@ class visitor_impl<Result, matchbox::visitor<Ts...>, Fn>
 };
 
 template <typename AcceptorCVRef, typename Enable = void>
-struct select_visitor;
+struct select_visitor {};
 
 template <typename Acceptor>
 struct select_visitor<Acceptor &, std::void_t<typename Acceptor::const_visitor, typename Acceptor::visitor>> {
@@ -416,46 +448,51 @@ template <typename Result, typename VariantCVRef, typename... Arms, //
     std::enable_if_t<detail::is_variant_v<VariantCVRef>, int> = 0>
 inline constexpr Result match(VariantCVRef &&v, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
-    detail::assert_overload_invocable<overload_type, VariantCVRef &&>();
-
-    return std::visit(detail::convert_result<Result, overload_type>(overload_type(std::forward<Arms>(arms)...)),
-        std::forward<VariantCVRef>(v));
+    // `if constexpr`: suppress follow-up compiler errors if static assertion fails
+    if constexpr(detail::assert_is_overload_invocable<overload_type, VariantCVRef &&>()) {
+        return std::visit(detail::convert_result<Result, overload_type>(overload_type(std::forward<Arms>(arms)...)),
+            std::forward<VariantCVRef>(v));
+    }
 }
 
 template <typename VariantCVRef, typename... Arms, //
     std::enable_if_t<detail::is_variant_v<VariantCVRef>, int> = 0>
 inline constexpr decltype(auto) match(VariantCVRef &&v, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
-    detail::assert_overload_invocable<overload_type, VariantCVRef &&>();
-    detail::assert_invoke_results_compatible<overload_type, VariantCVRef &&>();
-
-    using result_type = detail::common_invoke_result_t<overload_type, VariantCVRef &&>;
-    return std::visit(detail::convert_result<result_type, overload_type>(overload_type(std::forward<Arms>(arms)...)),
-        std::forward<VariantCVRef>(v));
+    // `if constexpr`: suppress follow-up compiler errors if static assertion fails
+    if constexpr(detail::assert_is_overload_invocable<overload_type, VariantCVRef &&>()
+        && detail::assert_has_common_invoke_result<overload_type, VariantCVRef &&>()) {
+        using result_type = detail::common_invoke_result_t<overload_type, VariantCVRef &&>;
+        return std::visit(
+            detail::convert_result<result_type, overload_type>(overload_type(std::forward<Arms>(arms)...)),
+            std::forward<VariantCVRef>(v));
+    }
 }
 
 template <typename Result, typename OptionalCVRef, typename... Arms, //
     std::enable_if_t<detail::is_optional_v<OptionalCVRef>, int> = 0>
 inline constexpr Result match(OptionalCVRef &&o, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
-    detail::assert_overload_invocable<overload_type, OptionalCVRef &&>();
-
-    return detail::visit_optional_r<Result>(
-        detail::convert_result<Result, overload_type>(overload_type(std::forward<Arms>(arms)...)),
-        std::forward<OptionalCVRef>(o));
+    // `if constexpr`: suppress follow-up compiler errors if static assertion fails
+    if constexpr(detail::assert_is_overload_invocable<overload_type, OptionalCVRef &&>()) {
+        return detail::visit_optional_r<Result>(
+            detail::convert_result<Result, overload_type>(overload_type(std::forward<Arms>(arms)...)),
+            std::forward<OptionalCVRef>(o));
+    }
 }
 
 template <typename OptionalCVRef, typename... Arms, //
     std::enable_if_t<detail::is_optional_v<OptionalCVRef>, int> = 0>
 inline constexpr decltype(auto) match(OptionalCVRef &&o, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
-    detail::assert_overload_invocable<overload_type, OptionalCVRef &&>();
-    detail::assert_invoke_results_compatible<overload_type, OptionalCVRef &&>();
-
-    using result_type = detail::common_invoke_result_t<overload_type, OptionalCVRef &&>;
-    return detail::visit_optional_r<result_type>(
-        detail::convert_result<result_type, overload_type>(overload_type(std::forward<Arms>(arms)...)),
-        std::forward<OptionalCVRef>(o));
+    // `if constexpr`: suppress follow-up compiler errors if static assertion fails
+    if constexpr(detail::assert_is_overload_invocable<overload_type, OptionalCVRef &&>()
+        && detail::assert_has_common_invoke_result<overload_type, OptionalCVRef &&>()) {
+        using result_type = detail::common_invoke_result_t<overload_type, OptionalCVRef &&>;
+        return detail::visit_optional_r<result_type>(
+            detail::convert_result<result_type, overload_type>(overload_type(std::forward<Arms>(arms)...)),
+            std::forward<OptionalCVRef>(o));
+    }
 }
 
 // TODO make all of these constexpr in C++20 (when we are allowed to do virtual function calls)
@@ -465,24 +502,26 @@ template <typename Result, typename AcceptorCVRef, typename... Arms,
 inline Result match(AcceptorCVRef &&acceptor, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
     using visited_types = typename Visitor::visited_types;
-    detail::assert_overload_invocable<overload_type, visited_types>();
-
-    detail::visitor_impl<Result, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
-    std::forward<AcceptorCVRef>(acceptor).accept(vis);
-    return vis.get_result();
+    // `if constexpr`: suppress follow-up compiler errors if static assertion fails
+    if constexpr(detail::assert_is_overload_invocable<overload_type, visited_types>()) {
+        detail::visitor_impl<Result, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
+        std::forward<AcceptorCVRef>(acceptor).accept(vis);
+        return vis.get_result();
+    }
 }
 
 template <typename AcceptorCVRef, typename... Arms, typename Visitor = detail::select_visitor_t<AcceptorCVRef &&>>
 inline decltype(auto) match(AcceptorCVRef &&acceptor, Arms &&...arms) {
     using overload_type = detail::overload<detail::remove_cvref_t<Arms>...>;
     using visited_types = typename Visitor::visited_types;
-    detail::assert_overload_invocable<overload_type, visited_types>();
-    detail::assert_invoke_results_compatible<overload_type, visited_types>();
-
-    using result_type = detail::common_invoke_result_t<overload_type, visited_types>;
-    detail::visitor_impl<result_type, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
-    std::forward<AcceptorCVRef>(acceptor).accept(vis);
-    return vis.get_result();
+    // `if constexpr`: suppress follow-up compiler errors if static assertion fails
+    if constexpr(detail::assert_is_overload_invocable<overload_type, visited_types>()
+        && detail::assert_has_common_invoke_result<overload_type, visited_types>()) {
+        using result_type = detail::common_invoke_result_t<overload_type, visited_types>;
+        detail::visitor_impl<result_type, Visitor, overload_type> vis(overload_type{std::forward<Arms>(arms)...});
+        std::forward<AcceptorCVRef>(acceptor).accept(vis);
+        return vis.get_result();
+    }
 }
 
 } // namespace matchbox
